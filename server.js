@@ -388,13 +388,15 @@ app.use((err, req, res, next) => {
   res.status(500).json({ error: 'Internal server error' });
 });
 
-// Start server locally OR export for Vercel serverless
-if (process.env.NODE_ENV !== 'production' && !process.env.VERCEL) {
+// Start server locally (when not on Vercel)
+if (!process.env.VERCEL) {
   app.listen(PORT, () => {
     console.log(`🚀 ClawKit API Server running on http://localhost:${PORT}`);
     console.log(`📝 Environment: ${process.env.NODE_ENV || 'development'}`);
   });
 }
 
-// Export for Vercel serverless
-export default app;
+// Export handler for Vercel serverless
+// Vercel calls this with (req, res) parameters
+const handler = app;
+export default handler;
