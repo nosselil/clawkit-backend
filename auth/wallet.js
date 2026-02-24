@@ -74,7 +74,7 @@ export default function handler(req, res) {
     try {
       const publicKeyBytes = bs58.decode(publicKey);
       const signatureBytes = bs58.decode(signature);
-      const messageBytes = new TextEncoder().encode(message);
+      const messageBytes = Buffer.from(message, 'utf-8');
 
       isValid = nacl.sign.detached.verify(
         messageBytes,
