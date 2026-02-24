@@ -112,6 +112,10 @@ app.get('/api/auth/google', (req, res) => {
 
 // Google OAuth - Step 2: Handle callback and exchange code
 app.post('/api/auth/callback/google', async (req, res) => {
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+  
   try {
     const { code } = req.body;
     
@@ -188,6 +192,10 @@ app.get('/api/auth/github', (req, res) => {
 
 // GitHub OAuth - Step 2: Handle callback and exchange code
 app.post('/api/auth/callback/github', async (req, res) => {
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+  
   try {
     const { code } = req.body;
     
@@ -273,8 +281,21 @@ app.post('/api/auth/callback/github', async (req, res) => {
   }
 });
 
+// OPTIONS handler for wallet endpoint (preflight)
+app.options('/api/auth/wallet', (req, res) => {
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+  res.sendStatus(200);
+});
+
 // Solana Wallet auth
 app.post('/api/auth/wallet', (req, res) => {
+  // Set CORS headers explicitly
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+  
   try {
     const { publicKey, signature, message } = req.body;
 
