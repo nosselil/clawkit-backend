@@ -2,7 +2,14 @@
   "version": 2,
   "builds": [
     {
-      "src": "server.js",
+      "src": "*.js",
+      "use": "@vercel/node",
+      "config": {
+        "maxDuration": 30
+      }
+    },
+    {
+      "src": "auth/*.js",
       "use": "@vercel/node",
       "config": {
         "maxDuration": 30
@@ -11,8 +18,12 @@
   ],
   "routes": [
     {
+      "src": "/api/auth/wallet",
+      "dest": "/auth/wallet.js"
+    },
+    {
       "src": "/(.*)",
-      "dest": "server.js"
+      "dest": "/server.js"
     }
   ],
   "headers": [
