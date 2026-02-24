@@ -388,6 +388,15 @@ app.use((err, req, res, next) => {
   res.status(500).json({ error: 'Internal server error' });
 });
 
+// Handler wrapper for Vercel
+const handler = (req, res) => {
+  // Prepend /api to the path for routing if not already present
+  if (!req.url.startsWith('/api/')) {
+    req.url = `/api${req.url}`;
+  }
+  return app(req, res);
+};
+
 // Start server locally (when not on Vercel)
 if (!process.env.VERCEL) {
   app.listen(PORT, () => {
@@ -396,7 +405,5 @@ if (!process.env.VERCEL) {
   });
 }
 
-// Export handler for Vercel serverless
-// Vercel calls this with (req, res) parameters
-const handler = app;
+// Export handler for Vercel
 export default handler;
