@@ -8,6 +8,7 @@ import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
 import nacl from 'tweetnacl';
 import bs58 from 'bs58';
+import Stripe from 'stripe';
 
 // Load environment variables from .env file
 const __filename = fileURLToPath(import.meta.url);
@@ -17,6 +18,12 @@ dotenv.config({ path: join(__dirname, '.env') });
 const app = express();
 const PORT = process.env.PORT || 3001;
 const JWT_SECRET = process.env.JWT_SECRET || 'your-secret-key-change-in-production';
+
+// Stripe initialization
+const stripe = process.env.STRIPE_SECRET_KEY ? new Stripe(process.env.STRIPE_SECRET_KEY) : null;
+const STRIPE_PRICE_ID = process.env.STRIPE_PRICE_ID; // Price ID for Pro plan ($299/month)
+const STRIPE_WEBHOOK_SECRET = process.env.STRIPE_WEBHOOK_SECRET;
+const FRONTEND_URL = process.env.FRONTEND_URL || 'https://clawkit.net';
 
 // CORS Middleware - explicitly set headers
 app.use((req, res, next) => {
@@ -40,6 +47,32 @@ app.use((req, res, next) => {
   }
   
   next();
+});
+
+// Stripe webhook needs raw body — must be before express.json()
+app.post('/api/stripe/webhook', express.raw({ type: 'application/json' }), (req, res) => {
+  if (!stripe || !STRIPE_WEBHOOK_SECRET) {
+    return res.status(500).json({ error: 'Stripe not configured' });
+  }
+
+  let event;
+  try {
+    const sig = req.headers['stripe-signature'];
+    event = stripe.webhooks.constructEvent(req.body, sig, STRIPE_WEBHOOK_SECRET);
+  } catch (err) {
+    console.error('Webhook signature verification failed:', err.message);
+    return res.status(400).send(`Webhook Error: ${err.message}`);
+  }
+
+  if (event.type === 'checkout.session.completed') {
+    const session = event.data.object;
+    const userId = session.metadata?.userId;
+    const userEmail = session.customer_email || session.metadata?.email;
+    console.log(`✅ Checkout completed for user ${userId} (${userEmail})`);
+    // In production, update DB here. For now the frontend handles tier upgrade on redirect.
+  }
+
+  res.json({ received: true });
 });
 
 app.use(express.json());
@@ -375,6 +408,76 @@ app.post('/api/keys/generate', (req, res) => {
 
   const apiKey = generateAPIKey(decoded.id);
   res.json({ apiKey, userId: decoded.id });
+});
+
+// ── Stripe Checkout ──
+app.post('/api/stripe/checkout', async (req, res) => {
+  if (!stripe || !STRIPE_PRICE_ID) {
+    return res.status(500).json({ error: 'Stripe not configured' });
+  }
+
+  try {
+    const { userId, email, returnTo } = req.body;
+    if (!userId) {
+      return res.status(400).json({ error: 'Missing userId' });
+    }
+
+    // Allow caller to specify where to return after checkout
+    const successUrl = returnTo === 'profile'
+      ? `${FRONTEND_URL}/profile?upgraded=true`
+      : `${FRONTEND_URL}/get-started?checkout=success&step=3`;
+    const cancelUrl = returnTo === 'profile'
+      ? `${FRONTEND_URL}/profile`
+      : `${FRONTEND_URL}/get-started?step=2`;
+
+    const session = await stripe.checkout.sessions.create({
+      mode: 'subscription',
+      payment_method_types: ['card'],
+      line_items: [{ price: STRIPE_PRICE_ID, quantity: 1 }],
+      ...(email ? { customer_email: email } : {}),
+      metadata: { userId, email: email || '' },
+      success_url: successUrl,
+      cancel_url: cancelUrl,
+    });
+
+    res.json({ url: session.url });
+  } catch (error) {
+    console.error('Stripe checkout error:', error.message);
+    res.status(500).json({ error: 'Failed to create checkout session' });
+  }
+});
+
+// ── Subscription selection (free tier or post-checkout upgrade) ──
+app.post('/api/subscription/select', (req, res) => {
+  try {
+    const { userId, tier, token } = req.body;
+    if (!userId || !tier) {
+      return res.status(400).json({ error: 'Missing userId or tier' });
+    }
+
+    // Verify token
+    const decoded = verifyJWT(token);
+    if (!decoded) {
+      return res.status(401).json({ error: 'Invalid token' });
+    }
+
+    // Generate appropriate API key
+    const prefix = tier === 'pro' ? 'clk_pro' : 'clk';
+    const timestamp = Date.now();
+    const randomPart = uuidv4().replace(/-/g, '').substring(0, 8);
+    const apiKey = `${prefix}_${userId.substring(0, 8)}_${timestamp}_${randomPart}`;
+
+    // Update in-memory user if exists
+    const user = users.get(userId);
+    if (user) {
+      user.tier = tier;
+    }
+
+    res.json({ apiKey, tier, userId });
+  } catch (error) {
+    console.error('Subscription select error:', error.message);
+    res.status(500).json({ error: 'Failed to select subscription' });
+  }
 });
 
 // Test endpoint
